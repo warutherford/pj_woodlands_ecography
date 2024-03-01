@@ -1,3 +1,3 @@
-Data is on Dryad:
+AIM data used and imported in the scripts is provided in the "AIM-LMF-2016-2021" folder. The AIM Interpreting Indicators of Rangeland Health data is available in the "rh_pj_aim_ind.csv" file. NRI data is not provided since it is geolocated (lat,lon associated), which requires a confidentiality agreement to view.
 
-NRI data is only available through a confidentiality agreement(email NRI@usda.gov), BLM AIM is provided here only.
+NRI data is available through a confidentiality agreement(email NRI@usda.gov), BLM AIM is provided here only. Analysis with NRI and AIM data followed same workflow where protocols were the same. Code to organize NRI data is still provided in the scripts.
