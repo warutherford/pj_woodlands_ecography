@@ -1,6 +1,4 @@
 # Clustering of PJ Communities in Western US
-# Austin Rutherford
-# austin.rutherford@usda.gov
 # 2023-07-17
 
 # Load packages
