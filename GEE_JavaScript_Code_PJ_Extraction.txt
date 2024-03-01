@@ -1,0 +1,485 @@
+//This script brings in and samples many data sets (rasters/images) by all pj nri/aim points
+//6.10.2023
+
+
+// Helper function to convert image collection into stack of image bands
+function newCollectionToImage(collection){
+var stack = ee.Image(collection.iterate(function(img, prev) {
+return ee.Image(prev).addBands(img);
+}, ee.Image(1)));
+ 
+stack = stack.select(ee.List.sequence(1, stack.bandNames().size().subtract(1)));
+return stack;
+}
+ 
+// Import the collections of POLARIS soil variables (all depths together)
+// Commented out POLARIS variables currently not interested in
+var bd_mean = ee.ImageCollection("projects/sat-io/open-datasets/polaris/bd_mean");
+var ksat_mean = ee.ImageCollection('projects/sat-io/open-datasets/polaris/ksat_mean');
+var theta_s_mean = ee.ImageCollection('projects/sat-io/open-datasets/polaris/theta_s_mean');
+//var n_mean = ee.ImageCollection('projects/sat-io/open-datasets/polaris/n_mean');
+var om_mean = ee.ImageCollection('projects/sat-io/open-datasets/polaris/om_mean');
+var ph_mean = ee.ImageCollection('projects/sat-io/open-datasets/polaris/ph_mean');
+var sand_mean = ee.ImageCollection('projects/sat-io/open-datasets/polaris/sand_mean');
+var silt_mean = ee.ImageCollection('projects/sat-io/open-datasets/polaris/silt_mean');
+var clay_mean = ee.ImageCollection('projects/sat-io/open-datasets/polaris/clay_mean');
+//var theta_r_mean = ee.ImageCollection('projects/sat-io/open-datasets/polaris/theta_r_mean');
+//var alpha_mean = ee.ImageCollection('projects/sat-io/open-datasets/polaris/alpha_mean');
+//var lambda_mean = ee.ImageCollection('projects/sat-io/open-datasets/polaris/lambda_mean');
+//var hb_mean = ee.ImageCollection('projects/sat-io/open-datasets/polaris/hb_mean');
+
+// Import soilgrids 250m depth to bedrock raster
+var soilgrid_bedrock = ee.Image('users/arutherford/soilgrids_dep_bedrock');
+
+// Import and calculate variables with usgs 10m DEM
+var dataset = ee.Image('USGS/3DEP/10m');
+var ele = dataset.select('elevation');
+var usgs = ee.Terrain.products(ele);
+var slope = usgs.select('slope');
+var aspect = usgs.select('aspect');
+var hillshade = usgs.select('hillshade');
+var t_img = ee.ImageCollection([ele, slope, aspect, hillshade, soilgrid_bedrock]);
+var topo = ee.FeatureCollection(t_img);
+
+//print(topo.getInfo());
+
+// Import worldclim bio variables (19 total)
+var dataset = ee.Image('WORLDCLIM/V1/BIO');
+var annualMeanTemperature = dataset.select('bio01');
+var diurnalRange = dataset.select('bio02');
+var isotherm = dataset.select('bio03');
+var tempseasonality =  dataset.select('bio04');
+var maxTempWarmMonth = dataset.select('bio05');
+var minTempColdMonth = dataset.select('bio06');
+var tempAnnualRange = dataset.select('bio07');
+var meanTempWetQuart = dataset.select('bio08');
+var meanTempDryQuart = dataset.select('bio09');
+var meanTempWarmQuart = dataset.select('bio10');
+var meanTempColdQuart = dataset.select('bio11');
+var annualPpt =  dataset.select('bio12');
+var pptWetMonth = dataset.select('bio13');
+var pptDryMonth = dataset.select('bio14');
+var pptSeasonality = dataset.select('bio15');
+var pptWetQuart = dataset.select('bio16');
+var pptDryQuart = dataset.select('bio17');
+var pptWarmQuart = dataset.select('bio18');
+var pptColdQuart = dataset.select('bio19');
+var clim_img = ee.ImageCollection([
+annualMeanTemperature,
+diurnalRange,
+isotherm,
+tempseasonality,
+maxTempWarmMonth,
+minTempColdMonth,
+tempAnnualRange,
+meanTempWetQuart,
+meanTempDryQuart,
+meanTempWarmQuart,
+meanTempColdQuart,
+annualPpt,
+pptWetMonth,
+pptDryMonth,
+pptSeasonality,
+pptWetQuart,
+pptDryQuart,
+pptWarmQuart,
+pptColdQuart]);
+var worldclim = ee.FeatureCollection(clim_img);
+
+// MODIS Land Cover Type
+var modis = ee.ImageCollection('MODIS/006/MCD12Q1');
+var igbpLandCover = modis.select('LC_Type1');
+
+// USFS MTBS Fire
+var fire = ee.ImageCollection('USFS/GTAC/MTBS/annual_burn_severity_mosaics/v1');
+var severity_mosaic = fire.mosaic();
+
+Map.addLayer(severity_mosaic,{
+  bands: ['Severity'],
+  min: 0,
+  max: 6,
+  palette: ['000000', '006400', '7FFFD4', 'FFFF00', 'FF0000', '7FFF00', 'FFFFFF']
+},"fire", false);
+
+//print(severity_mosaic.getInfo());
+
+// Import usgs fire rasters for wild and prescribed fire, then combine for all fire
+var wildfire_freq = ee.Image('users/arutherford/usgs_wildfire_freq');
+var prescribed_freq = ee.Image('users/arutherford/usgs_prescribed_freq');
+var fire_img = ee.ImageCollection([severity_mosaic, wildfire_freq, prescribed_freq]);
+var fire = ee.FeatureCollection(fire_img);
+
+// Import ecoregions for sampling
+var ecoregion_l4 = ee.FeatureCollection("EPA/Ecoregions/2013/L4");
+//print(ecoregion_l4.limit(10).getInfo());
+
+// Create clipping geometry if needed
+//var region = ee.Geometry.Rectangle([-94.0, 25.0, -125.0, 49.0]);
+//Map.addLayer(region,{},"bound box");
+
+// import aim and nri points
+var points = ee.FeatureCollection('users/arutherford/pj_woodland_assoc_gee');
+//var nri_points = ee.FeatureCollection('users/arutherford/pj_woodland_nri_gee');
+
+// Add to map if visual wanted
+//Map.addLayer(points,{},"pj points", true);
+//Map.addLayer(nri_points,{color: 'red'},"nri pjpoints", true);
+
+// Combine nri and aim pj points for sampling
+var all_points = points;//.merge(aim_points);
+Map.addLayer(all_points,{color: 'yellow'},"all pj points", true);
+
+//print(all_points.limit(10));
+ 
+// Define a spatial filter for the polygon and point overlaps
+var spatialFilter = ee.Filter.intersects({
+  leftField: '.geo',
+  rightField: '.geo',
+  maxError: 10
+});
+
+// Define which geometry/variable you want to save all the properties from
+var saveAllJoin = ee.Join.saveAll({
+  matchesKey: 'all_points'
+});
+
+// Join the ecoregion polygon properties with all the pj points
+var all_points_joined = saveAllJoin
+  .apply({
+    primary: ecoregion_l4, 
+    secondary: all_points, 
+    condition: spatialFilter
+  })
+  .map(function(polygon) {
+    var na_l1code = polygon.get('na_l1code');
+    var na_l1name = polygon.get('na_l1name');
+    var na_l2code = polygon.get('na_l2code');
+    var na_l2name = polygon.get('na_l2name');
+    var us_l3code = polygon.get('us_l3code');
+    var us_l3name = polygon.get('us_l3name');
+    var us_l4code = polygon.get('us_l4code');
+    var us_l4name = polygon.get('us_l4name');
+    var points = ee.FeatureCollection(ee.List(polygon.get('all_points')))
+      .map(function (point) {
+        return point.set(
+        'na_l1code', na_l1code,
+        'na_l1name', na_l1name,
+        'na_l2code', na_l2code,
+        'na_l2name', na_l2name,
+        'us_l3code', us_l3code,
+        'us_l3name', us_l3name,
+        'us_l4code', us_l4code,
+        'us_l4name', us_l4name);
+      });
+    return points;
+  }).flatten();
+  
+print(all_points_joined.limit(10));
+ 
+// Create a single image from collections, variables end up as image bands
+var bdImg = newCollectionToImage(bd_mean);
+var ksatImg = newCollectionToImage(ksat_mean);
+var thetasImg = newCollectionToImage(theta_s_mean);
+var omImg = newCollectionToImage(om_mean);
+var phImg = newCollectionToImage(ph_mean);
+var sandImg = newCollectionToImage(sand_mean);
+var siltImg = newCollectionToImage(silt_mean);
+var clayImg = newCollectionToImage(clay_mean);
+var topoImg = newCollectionToImage(topo);
+var fireImg = newCollectionToImage(fire);
+var worldclimImg = newCollectionToImage(worldclim);
+var modisImg = newCollectionToImage(igbpLandCover);
+
+//print(clay_mean.getInfo());
+
+// Make a list of variables for combining
+var listOfImg = ee.List([
+bdImg,
+ksatImg,
+thetasImg,
+omImg,
+phImg,
+sandImg,
+siltImg,
+clayImg,
+topoImg,
+worldclimImg,
+modisImg,
+fireImg
+  ]);
+
+var combo_img = ee.ImageCollection(listOfImg).toBands();
+
+//print(combo_img.getInfo());
+
+// Sample the imgs by the points
+// Mean of 30 m region from point location
+var combo_samps = combo_img.reduceRegions({
+  collection: all_points_joined,
+  crs: ee.Projection('EPSG:4326'),
+  scale:30,
+  reducer: ee.Reducer.mean()
+});
+
+print(combo_samps.limit(1));
+
+// Correct property value names
+var result_combined = combo_samps.map(function(feat){
+  return ee.Feature(feat.geometry(), { 
+    bd_depth_0_5: feat.get('0_b1'),
+    bd_depth_100_200: feat.get('0_b1_1'),
+    bd_depth_15_30: feat.get('0_b1_2'),
+    bd_depth_30_60: feat.get('0_b1_3'),
+    bd_depth_5_15: feat.get('0_b1_4'),
+    bd_depth_60_100: feat.get('0_b1_5'),
+    ksat_depth_0_5: feat.get('1_b1'),
+    ksat_depth_100_200: feat.get('1_b1_1'),
+    ksat_depth_15_30: feat.get('1_b1_2'),
+    ksat_depth_30_60: feat.get('1_b1_3'),
+    ksat_depth_5_15: feat.get('1_b1_4'),
+    ksat_depth_60_100: feat.get('1_b1_5'),
+    thetas_depth_0_5: feat.get('2_b1'),
+    thetas_depth_100_200: feat.get('2_b1_1'),
+    thetas_depth_15_30: feat.get('2_b1_2'),
+    thetas_depth_30_60: feat.get('2_b1_3'),
+    thetas_depth_5_15: feat.get('2_b1_4'),
+    thetas_depth_60_100: feat.get('2_b1_5'),
+    om_depth_0_5: feat.get('3_b1'),
+    om_depth_100_200: feat.get('3_b1_1'),
+    om_depth_15_30: feat.get('3_b1_2'),
+    om_depth_30_60: feat.get('3_b1_3'),
+    om_depth_5_15: feat.get('3_b1_4'),
+    om_depth_60_100: feat.get('3_b1_5'),
+    ph_depth_0_5: feat.get('4_b1'),
+    ph_depth_100_200: feat.get('4_b1_1'),
+    ph_depth_15_30: feat.get('4_b1_2'),
+    ph_depth_30_60: feat.get('4_b1_3'),
+    ph_depth_5_15: feat.get('4_b1_4'),
+    ph_depth_60_100: feat.get('4_b1_5'),
+    sand_depth_0_5: feat.get('5_b1'),
+    sand_depth_100_200: feat.get('5_b1_1'),
+    sand_depth_15_30: feat.get('5_b1_2'),
+    sand_depth_30_60: feat.get('5_b1_3'),
+    sand_depth_5_15: feat.get('5_b1_4'),
+    sand_depth_60_100: feat.get('5_b1_5'),
+    silt_depth_0_5: feat.get('6_b1'),
+    silt_depth_100_200: feat.get('6_b1_1'),
+    silt_depth_15_30: feat.get('6_b1_2'),
+    silt_depth_30_60: feat.get('6_b1_3'),
+    silt_depth_5_15: feat.get('6_b1_4'),
+    silt_depth_60_100: feat.get('6_b1_5'),
+    clay_depth_0_5: feat.get('7_b1'),
+    clay_depth_100_200: feat.get('7_b1_1'),
+    clay_depth_15_30: feat.get('7_b1_2'),
+    clay_depth_30_60: feat.get('7_b1_3'),
+    clay_depth_5_15: feat.get('7_b1_4'),
+    clay_depth_60_100: feat.get('7_b1_5'),
+    PrimaryKey:feat.get('PrimaryKey'),
+    DBKey:feat.get('DBKey'),
+    AssocKey:feat.get('AssocKey'),
+    dupe_count:feat.get('DupeCount'),
+    //date_visited:feat.get('DateVisited'),
+    county:feat.get('County'),
+    //county_number:feat.get('COUNTY'),
+    //density:feat.get('DENSITY'),
+    ecositeID:feat.get('EcologicalSiteId'),
+    elevation_orig:feat.get('Elevation'),
+    //point:feat.get('POINT'),
+    //psu:feat.get('PSU'),
+    //loctype:feat.get('LocationType'),
+    //latitude_n:ee.Geometry.Point(ee.Number(feat.get(1))),
+    //longitude_n:feat.get('0'),
+    //percentcovESD:feat.get('PercentCoveredByEcoSite'),
+    source:feat.get('Source'),
+    species:feat.get('Species'),
+    speciescount:feat.get('SpeciesCount'),
+    state:feat.get('State'),
+    usgs_elevation:feat.get('8_elevation'),
+    usgs_slope:feat.get('8_slope'),
+    usgs_aspect:feat.get('8_aspect'),
+    usgs_hillshade:feat.get('8_hillshade'),
+    dep_bedrock:feat.get('8_b1'),
+    annualMeanTemperature:feat.get('9_bio01'),
+    diurnalRange:feat.get('9_bio02'),
+    isotherm:feat.get('9_bio03'),
+    tempseasonality:feat.get('9_bio04'),
+    maxTempWarmMonth:feat.get('9_bio05'),
+    minTempColdMonth:feat.get('9_bio06'),
+    tempAnnualRange:feat.get('9_bio07'),
+    meanTempWetQuart:feat.get('9_bio08'),
+    meanTempDryQuart:feat.get('9_bio09'),
+    meanTempWarmQuart:feat.get('9_bio10'),
+    meanTempColdQuart:feat.get('9_bio11'),
+    annualPpt:feat.get('9_bio12'),
+    pptWetMonth:feat.get('9_bio13'),
+    pptDryMonth:feat.get('9_bio14'),
+    pptSeasonality:feat.get('9_bio15'),
+    pptWetQuart:feat.get('9_bio16'),
+    pptDryQuart:feat.get('9_bio17'),
+    pptWarmQuart:feat.get('9_bio18'),
+    pptColdQuart:feat.get('9_bio19'),
+    mod_lc_2001:feat.get('10_LC_Type1'),
+    mod_lc_2002:feat.get('10_LC_Type1_1'),
+    mod_lc_2003:feat.get('10_LC_Type1_2'),
+    mod_lc_2004:feat.get('10_LC_Type1_3'),
+    mod_lc_2005:feat.get('10_LC_Type1_4'),
+    mod_lc_2006:feat.get('10_LC_Type1_5'),
+    mod_lc_2007:feat.get('10_LC_Type1_6'),
+    mod_lc_2008:feat.get('10_LC_Type1_7'),
+    mod_lc_2009:feat.get('10_LC_Type1_8'),
+    mod_lc_2010:feat.get('10_LC_Type1_9'),
+    mod_lc_2011:feat.get('10_LC_Type1_10'),
+    mod_lc_2012:feat.get('10_LC_Type1_11'),
+    mod_lc_2013:feat.get('10_LC_Type1_12'),
+    mod_lc_2014:feat.get('10_LC_Type1_13'),
+    mod_lc_2015:feat.get('10_LC_Type1_14'),
+    mod_lc_2016:feat.get('10_LC_Type1_15'),
+    mod_lc_2017:feat.get('10_LC_Type1_16'),
+    mod_lc_2018:feat.get('10_LC_Type1_17'),
+    mod_lc_2019:feat.get('10_LC_Type1_18'),
+    mod_lc_2020:feat.get('10_LC_Type1_19'),
+    severity:feat.get('11_Severity'),
+    wildfire_freq:feat.get('11_b1'),
+    prescribed_freq:feat.get('11_b1_1'),
+    na_l1code:feat.get('na_l1code'),
+    na_l1name:feat.get('na_l1name'),
+    na_l2code:feat.get('na_l2code'),
+    na_l2name:feat.get('na_l2name'),
+    us_l3code:feat.get('us_l3code'),
+    us_l3name:feat.get('us_l3name'),
+    us_l4code:feat.get('us_l4code'),
+    us_l4name:feat.get('us_l4name')
+  });
+});
+
+print(result_combined.limit(10));
+
+var collection_with_latlon = result_combined.map(function (feature) {
+  var coordinates = feature.geometry().transform('epsg:4326').coordinates();
+  return feature.set('lon', coordinates.get(0), 'lat', coordinates.get(1));
+});
+
+//print(collection_with_latlon.limit(10));
+
+// Export table 
+Export.table.toDrive({
+    collection: result_combined,
+    selectors:[
+    'bd_depth_0_5',
+    'bd_depth_100_200',
+    'bd_depth_15_30',
+    'bd_depth_30_60',
+    'bd_depth_5_15',
+    'bd_depth_60_100',
+    'ksat_depth_0_5',
+    'ksat_depth_100_200',
+    'ksat_depth_15_30',
+    'ksat_depth_30_60',
+    'ksat_depth_5_15',
+    'ksat_depth_60_100',
+    'thetas_depth_0_5',
+    'thetas_depth_100_200',
+    'thetas_depth_15_30',
+    'thetas_depth_30_60',
+    'thetas_depth_5_15',
+    'thetas_depth_60_100',
+    'om_depth_0_5',
+    'om_depth_100_200',
+    'om_depth_15_30',
+    'om_depth_30_60',
+    'om_depth_5_15',
+    'om_depth_60_100',
+    'ph_depth_0_5',
+    'ph_depth_100_200',
+    'ph_depth_15_30',
+    'ph_depth_30_60',
+    'ph_depth_5_15',
+    'ph_depth_60_100',
+    'sand_depth_0_5',
+    'sand_depth_100_200',
+    'sand_depth_15_30',
+    'sand_depth_30_60',
+    'sand_depth_5_15',
+    'sand_depth_60_100',
+    'silt_depth_0_5',
+    'silt_depth_100_200',
+    'silt_depth_15_30',
+    'silt_depth_30_60',
+    'silt_depth_5_15',
+    'silt_depth_60_100',
+    'clay_depth_0_5',
+    'clay_depth_100_200',
+    'clay_depth_15_30',
+    'clay_depth_30_60',
+    'clay_depth_5_15',
+    'clay_depth_60_100',
+    'PrimaryKey',
+    'DBKey',
+    'AssocKey',
+    'dupe_count',
+    'county',
+    'ecositeID',
+    'elevation_orig',
+    'source',
+    'species',
+    'speciescount',
+    'state',
+    'usgs_elevation',
+    'usgs_slope',
+    'usgs_aspect',
+    'usgs_hillshade',
+    'dep_bedrock',
+    'annualMeanTemperature',
+    'diurnalRange',
+    'isotherm',
+    'tempseasonality',
+    'maxTempWarmMonth',
+    'minTempColdMonth',
+    'tempAnnualRange',
+    'meanTempWetQuart',
+    'meanTempDryQuart',
+    'meanTempWarmQuart',
+    'meanTempColdQuart',
+    'annualPpt',
+    'pptWetMonth',
+    'pptDryMonth',
+    'pptSeasonality',
+    'pptWetQuart',
+    'pptDryQuart',
+    'pptWarmQuart',
+    'pptColdQuart',
+    'mod_lc_2001',
+    'mod_lc_2002',
+    'mod_lc_2003',
+    'mod_lc_2004',
+    'mod_lc_2005',
+    'mod_lc_2006',
+    'mod_lc_2007',
+    'mod_lc_2008',
+    'mod_lc_2009',
+    'mod_lc_2010',
+    'mod_lc_2011',
+    'mod_lc_2012',
+    'mod_lc_2013',
+    'mod_lc_2014',
+    'mod_lc_2015',
+    'mod_lc_2016',
+    'mod_lc_2017',
+    'mod_lc_2018',
+    'mod_lc_2019',
+    'mod_lc_2020',
+    'severity',
+    'wildfire_freq',
+    'prescribed_freq',
+    'na_l1code',
+    'na_l1name',
+    'na_l2code',
+    'na_l2name',
+    'us_l3code',
+    'us_l3name',
+    'us_l4code',
+    'us_l4name'],
+    description: 'All_Combined_PJ_Assoc_NoRH',
+    fileFormat: 'CSV'
+});
+
