@@ -74,15 +74,15 @@ header_aim <- readRDS("../../PJ-Woodlands/data/AIM-LMF-2016-2021/header.RData")
 
 ind_aim <- readRDS("../../PJ-Woodlands/data/AIM-LMF-2016-2021/indicators.RData")
 
-gap_aim <- readRDS("../../PJ-Woodlands/data/AIM-LMF-2016-2021/gap_tall.RData")
+#gap_aim <- readRDS("../../PJ-Woodlands/data/AIM-LMF-2016-2021/gap_tall.RData")
 
-height_aim <- readRDS("../../PJ-Woodlands/data/AIM-LMF-2016-2021/height_tall.RData")
+#height_aim <- readRDS("../../PJ-Woodlands/data/AIM-LMF-2016-2021/height_tall.RData")
 
-lpi_aim <- readRDS("../../PJ-Woodlands/data/AIM-LMF-2016-2021/lpi_tall.RData")
+#lpi_aim <- readRDS("../../PJ-Woodlands/data/AIM-LMF-2016-2021/lpi_tall.RData")
 
 sp_inv_aim <- readRDS("../../PJ-Woodlands/data/AIM-LMF-2016-2021/species_inventory_tall.RData")
 
-soil_aim <- readRDS("../../PJ-Woodlands/data/AIM-LMF-2016-2021/soil_stability_tall.RData")
+#soil_aim <- readRDS("../../PJ-Woodlands/data/AIM-LMF-2016-2021/soil_stability_tall.RData")
 
 range_health_aim <- readRDS("../../PJ-Woodlands/data/AIM-LMF-2016-2021/rangeland_health_tall.RData")
 
