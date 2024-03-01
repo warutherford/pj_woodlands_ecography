@@ -18,3 +18,5 @@ R scripts for random forest classification modeling the occurance of PJ Woodland
 ## Folder PJ_Woodlands_Organize_RangeHealth_GroundCover
 R scripts for cleaning and organizing the AIM and NRI protocol data to include only PJ Woodland species of interest as well as Rangeland Health data ("1_data-clean-organize-PJ-Woodlands.qmd"), followed by analysis and figure creation of ground cover metrics with Rangeland Health data ("2_range_health_022024.R" scripts).
 
+### File GEE_JavaScript_code_PJ_Extraction.txt
+JavaScript code used in Google Earth Engine for bioclimatic and topo-edaphic variable extraction by AIM and NRI point samples.
