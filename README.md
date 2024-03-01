@@ -1,2 +1,2 @@
 # pj_woodlands_ecography
-repo for submission to ecograpgy
+repo for submission to Ecography
