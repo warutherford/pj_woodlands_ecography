@@ -1,0 +1,833 @@
+---
+title: "Data-Clean-Organize"
+author: ""
+format: docx
+editor: visual
+---
+
+## Purpose
+
+Clean and do initial exploratory data analysis on AIM/LMF and NRI points in Landscape Data Commons that include Pinyon-Juniper species of interest. The objective of this document is to have a complete set of AIM/LMF and NRI points for analysis to potentially answer questions:
+
+**1.** What is the current domain of US pinyon and juniper species (and their respective associations) in the western 17 states? (geospatial grouping of points/associations)
+
+**2.** What ecological state are the PJ communities in based on shrub/tree density?
+
+**3.** What is the condition of the PJ communities (and respective state from Question 2) with respect to ecohydrologic function and erosion potential? (Rangeland Health)
+
+## Install/Load Packages
+
+```{r warning=FALSE, message=FALSE}
+
+# Install or Load needed packages, hidden from report fig output
+
+# Install packages if needed
+# install.packages("tidyverse")
+# install.packages("janitor")
+# install.packages("ggpubr")
+# install.packages("ggh4x")
+# install.packages("gridExtra")
+# install.packages("cowplot")
+# install.packages("devtools")
+# install.packages('R.utils') # dont need to load
+# install.packages("RColorBrewer")
+# install.packages("data.table")
+# devtools::install_github('Landscape-Data-Commons/terradactyl')
+# devtools::install_github('Landscape-Data-Commons/trex')
+# install.packages("maps")
+# install.packages("usmap")
+# install.packages("sf")
+# install.packages("ggmap")
+# install.packages("mapproj")
+# install.packages("leaftlet")
+# install.packages("leaflet.extras")
+
+library(tidyverse)
+library(janitor)
+library(dplyr)
+library(ggpubr)
+library(gridExtra)
+library(cowplot)
+library(ggh4x)
+library(RColorBrewer)
+library(data.table)
+library(terradactyl)
+library(trex)
+library(maps)
+library(usmap)
+library(sf)
+library(ggmap)
+library(mapproj)
+library(leaflet)
+library(leaflet.extras)
+```
+
+## Pull Data from Landscape Data Commons
+
+```{r warning=FALSE, message=FALSE}
+
+#####
+
+## Read in RDS files of LDC exports for BLM-AIM
+
+header_aim <- readRDS("../../PJ-Woodlands/data/AIM-LMF-2016-2021/header.RData")
+
+ind_aim <- readRDS("../../PJ-Woodlands/data/AIM-LMF-2016-2021/indicators.RData")
+
+gap_aim <- readRDS("../../PJ-Woodlands/data/AIM-LMF-2016-2021/gap_tall.RData")
+
+height_aim <- readRDS("../../PJ-Woodlands/data/AIM-LMF-2016-2021/height_tall.RData")
+
+lpi_aim <- readRDS("../../PJ-Woodlands/data/AIM-LMF-2016-2021/lpi_tall.RData")
+
+sp_inv_aim <- readRDS("../../PJ-Woodlands/data/AIM-LMF-2016-2021/species_inventory_tall.RData")
+
+soil_aim <- readRDS("../../PJ-Woodlands/data/AIM-LMF-2016-2021/soil_stability_tall.RData")
+
+range_health_aim <- readRDS("../../PJ-Woodlands/data/AIM-LMF-2016-2021/rangeland_health_tall.RData")
+
+species_aim <- readRDS("../../PJ-Woodlands/data/LDC_raw/species.rds")
+
+
+# look at only LMF points
+lmf_points <- header_aim %>% 
+  mutate(source = as.factor(source),
+         DBKey = as.factor(as.character((as.numeric(DBKey))))) %>% 
+  filter(source == "LMF") %>% 
+  arrange(DBKey)
+
+# look at only AIM points
+aim_points <- header_aim %>% 
+  mutate(source = as.factor(source),
+         DBKey = as.factor(str_sub(PrimaryKey, -10, -7))) %>% # make DBKey to match LMF/NRI 
+  filter(source == "TerrADat") %>% 
+  arrange(DBKey)
+
+# recombine LMF and AIM
+aim_all_points <- bind_rows(aim_points, lmf_points)
+
+## Read in RDS files of LDC exports for NRCS-NRI, need confidentiality aggreement for NRI
+
+#header_nri <- readRDS("../../PJ-Woodlands/data/NRI-2004-2020/header.RData")
+
+#ind_nri <- readRDS("../../PJ-Woodlands/data/NRI-2004-2020/lpi_indicators.RData")
+
+#gap_nri <- readRDS("../../PJ-Woodlands/data/NRI-2004-2020/gap_tall.RData")
+
+#height_nri <- readRDS("../../PJ-Woodlands/data/NRI-2004-2020/height_tall.RData")
+
+#lpi_nri <- readRDS("../../PJ-Woodlands/data/NRI-2004-2020/lpi_tall.RData")
+
+#sp_inv_nri <- readRDS("../../PJ-Woodlands/data/NRI-2004-2020/species_inventory_tall.RData")
+
+#soil_nri <- readRDS("../../PJ-Woodlands/data/NRI-2004-2020/soil_stability_tall.RData")
+
+#range_health_nri <- readRDS("../../PJ-Woodlands/data/NRI-2004-2020/rangehealth_tall.RData")
+
+
+# look at only NRI points
+#nri_points <- header_nri %>% 
+#  arrange(DBKey) %>% 
+#  mutate(DBKey = as.factor(str_sub(PrimaryKey, 1, 4))) # fix DBKey to match AIM/LMF
+```
+
+## Filter to All PJ Species
+
+```{r warning=FALSE, message=FALSE}
+
+# Create lists of potential Juniperus and Pinus species
+# list of Junipers from USDA PLANTS Database
+juniperus <- c("JUCO","JUCO6", "JUNIP", "JUSC2",
+                      "JUCOA2",
+                      "JUAR3","JUCOA3",
+                      "JUAS","JUASO","JUASO","JUOCC",
+                      "JUAS","JUOCT","JUSA4","JUCA7","JUCE",
+                      "JUCE2", "JUPY2", "JUCO11","JUCOC2",
+                      "JUERC", "JUDE2","JUDEP","JUDES","JUDES2",
+                      "JUME6","JUPA6","JUFL", "JUFLG","JUGI",
+                      "JUGR4","JUGR7","JUOCA","JUOCA2","JUMO",
+                      "JUOCG","JUMOM","JUOC","JUCAS2",
+                      "JUOCO","JUOS","JUCAO","JUCAO2",
+                      "JUCAU","JUKN","JUME7","JUMOK",
+                      "JUOCU","JUUT","JUUTM","JUPI",
+                      "JUER","JUMOP","JUPIE", "JUVI",
+                      "JUTE4","JUVIS","JUBA3","JULU",
+                      "JUSI","JUVIS3")
+
+# list of Pines from USDA PLANTS Database
+pinus <- c("ABFR","PIFR","PINUS","PIAT2",
+                  "PIHU3","PISO","PISO","PIAR",
+                  "PIAR5","PIARA","PIPOA","PIPOA2",
+                  "PIARS2","PIARS3","PIAT","PIBA","PIBAA",
+                  "PIBAB","PICE","PICL","PICLI",
+                  "PICLI2","PIVIC","PICOB","PICOB2",
+                  "PICOM","PICOM4","PIMU6","PICO3",
+                  "PIPOC","PIDI3","PICEB","PICUD",
+                  "PIEC2","PIED","PICEE","PIEL",
+                  "PIELD","PIDE3","PIDEA","PIELA",
+                  "PIELA2","PIELE2","PICA2","PIHE6",
+                  "PIEN2","PIAP","PILA5","PIGL2",
+                  "PIHA7","PIJE","PIPOJ","PILA",
+                  "PILE","PILEC","PICH3","PILO",
+                  "PIARL","PIMO","PICA16","PIEDF",
+                  "PIMOC","PIMOC2","PIMOF","PIMOF2",
+                  "PIMOM2","PIMU","PIMUB","PIMUB2",
+                  "PIMUM","PIMUR2","PIMUS","PIMUS2",
+                  "PIRE2","PIPA2","PIAU3","PIPI6",
+                  "PIPI7","PIPOB2","PIPOC2","PIBE",
+                  "PIBE2","PIPOB","PIPOP2","PIPOB3",
+                  "PIPOB4","PIPOB5","PIBR7","PIPOW2",
+                  "PIPOW","PIWA","PIPU5","PIQU",
+                  "PIJU","PIRA2","PIRAB",
+                  "PIRE5","PICA3","PICER",
+                  "PIREC","PIRI2","PIRI9","PIRI8",
+                  "PISA2","PISE","PIRIS","PISE7","PIST3",
+                  "PIAY","PIFLR2","PIRE6","PITA",
+                  "PITH2","PITH3","PITO","PITOI","PITOI2",
+                  "PITOT","PITOT2","PIWA3","PIGR10")
+
+
+# Start with NRI Species Inventory (only goes back to 2009, points back to 2004)
+# Check with LDC crew on 2004-2009
+pj_nri <- sp_inv_nri %>% 
+  full_join(nri_points, by = "PrimaryKey") %>% 
+  select(-STATE, -source.y, -DBKey.x) %>% 
+  rename(DBKey = DBKey.y,
+         source = source.x) %>% 
+  # 17 Western States Only
+  filter(State == "AZ"|
+           State == "NV" |
+           State == "WA" |
+           State == "OR" |
+           State == "CA" |
+           State == "UT" |
+           State == "NM" |
+           State == "TX" |
+           State == "CO" |
+           State == "OK" |
+           State == "KS" |
+           State == "NE" |
+           State == "SD" |
+           State == "ND" |
+           State == "MT" |
+           State == "WY" |
+           State == "ID") %>% 
+  # Junipers
+  filter(Species %in% juniperus |
+           Species %in% pinus)
+
+# Look at duplicate points - NONE
+pj_nri %>%
+  group_by_all() %>%
+  filter(n()>1) %>%
+  ungroup()
+
+# Filter to only PJ Woodland species (remove one off/low elevation PJ species)
+pj_woodland_nri_cleaner <- pj_nri %>%
+  filter(!(
+    #Species == "JUCO" |
+    Species == "JUCA7" | # California Juniper
+      Species == "JUGR7" |
+         Species == "PIAR" |
+         Species == "PIAT" |
+         Species == "PIGL2"|
+         Species == "PIJE" |
+         Species == "PILA" |
+         Species == "PILO" |
+         Species == "PISA2" |
+           Species == "PIRA2"|
+           Species == "PIMU" |
+           Species == "PITA" |
+           # Species == "PIEL" | # take out slashpine, not enough
+           Species == "PIEC2")) %>% 
+  unique()
+
+# limit to important columns for Google EE extraction
+# write.csv(pj_woodland_nri_cleaner, file = "C:/Users/Austin.Rutherford/OneDrive - USDA/ARS/Projects/Woodland_NRI/PJ-Woodlands/data/pj_woodland_nri_gee.csv", row.names = FALSE)
+
+# 366 (29-3, 335-2) points with PJ associations (PIED/JUSC2/JUOS) (JUMO/PIED/JUDE2) (JUMO/PIMO/JUDE2) (JUOS/PIED) (PIMO/JUOS), others single species
+assoc_nri_count <- pj_woodland_nri_cleaner %>% 
+  mutate(PrimaryKey = as.factor(PrimaryKey)) %>% 
+  group_by(PrimaryKey) %>% 
+  summarize(count = n()) %>% 
+  arrange(desc(count))
+
+# select for assocations, grouped PJ species
+assoc_nri_extract <- pj_woodland_nri_cleaner %>% 
+  mutate(PrimaryKey = as.factor(PrimaryKey)) %>% 
+  get_dupes(PrimaryKey)
+
+# Look at BLM-AIM/LMF Species Inventory
+pj_aim <- sp_inv_aim %>% 
+  full_join(aim_all_points, by = "PrimaryKey") %>% 
+  select(-SpeciesState, -source.y, -DBKey.x) %>% 
+  rename(DBKey = DBKey.y,
+         source = source.x) %>% 
+  # 17 Western States Only
+  filter(State == "AZ"|
+           State == "NV" |
+           State == "WA" |
+           State == "OR" |
+           State == "CA" |
+           State == "UT" |
+           State == "NM" |
+           State == "TX" |
+           State == "CO" |
+           State == "OK" |
+           State == "KS" |
+           State == "NE" |
+           State == "SD" |
+           State == "ND" |
+           State == "MT" |
+           State == "WY" |
+           State == "ID") %>% 
+  # Junipers and Pines only
+  filter(Species %in% juniperus |
+           Species %in% pinus)
+
+# Look at duplicate points (~160)
+pj_aim %>%
+  group_by_all() %>%
+  filter(n()>1) %>%
+  ungroup()
+
+# remove duplicates of aim points
+pj_aim_cleaner <- pj_aim  %>% distinct()
+
+# look at all PJ species
+pj_aim_list <- pj_aim_cleaner %>%
+  select(Species) %>%
+  group_by(Species)%>%
+  unique()
+
+# Filter to only PJ Woodland species (remove random/low elevation PJ)
+pj_woodland_aim_cleaner <- pj_aim_cleaner %>%
+  filter(!(
+    #Species == "JUCO" |
+     Species == "JUCA7" | # California Juniper
+       Species == "JUGR7" |
+         Species == "PIAR" |
+         Species == "PIAT" |
+         Species == "PIGL2"|
+         Species == "PIJE" |
+         Species == "PILA" |
+         Species == "PILO" |
+         Species == "PISA2")) %>% 
+  unique()
+
+# limit to important columns for Google EE extraction, most complete is LMF
+pj_woodland_aim_slim <- pj_woodland_aim_cleaner %>% 
+  select(PrimaryKey, Species, SpeciesCount, source, DENSITY, DBKey, 
+         EcologicalSiteId, Latitude_NAD83, Longitude_NAD83, State, Elevation, 
+         County, LocationType, PercentCoveredByEcoSite, DateVisited.y) %>% 
+  unique()
+
+# write.csv(pj_woodland_aim_slim, file = "../../PJ-Woodlands/data/pj_woodland_aim_gee.csv", row.names = FALSE)
+
+# get the number of associations present
+assoc_aim_count <- pj_woodland_aim_cleaner %>% 
+  unique() %>% 
+  mutate(PrimaryKey = as.factor(PrimaryKey)) %>% 
+  group_by(PrimaryKey, RecKey, PlotID) %>% 
+  summarize(count = n()) %>% 
+  arrange(desc(count))
+
+# select for assocations, grouped PJ species
+assoc_aim_extract <- pj_woodland_aim_cleaner %>% 
+  unique() %>% 
+  mutate(PrimaryKey = as.factor(PrimaryKey),
+         PlotID = as.factor(PlotID)) %>% 
+  get_dupes(PrimaryKey, RecKey, PlotID)
+
+assoc_aim_sing <- anti_join(pj_woodland_aim_cleaner, assoc_aim_extract) %>% 
+  mutate(PrimaryKey = as.factor(PrimaryKey),
+         PlotID = as.factor(PlotID)) %>% 
+  mutate(dupe_count = 1) %>% 
+  relocate(PlotID, .after = RecKey) %>% 
+  relocate(dupe_count, .after = PlotID) %>% 
+  relocate(LineKey, .after = dupe_count)
+
+assoc_nri_sing <- anti_join(pj_woodland_nri_cleaner, assoc_nri_extract) %>% 
+  mutate(PrimaryKey = as.factor(PrimaryKey)) %>% 
+  mutate(dupe_count = 1) %>% 
+  relocate(dupe_count, .after = PrimaryKey)
+
+assoc_aim_final <- rbind(assoc_aim_sing, assoc_aim_extract)%>% 
+  mutate(dupe_count = as.factor(dupe_count),
+         Species = as.factor(Species)) %>% 
+  mutate(Species = case_match(Species, "PIMOF" ~ "PIMO",
+                              "JUOCG" ~ "JUOC",
+                              .default = Species)) %>% 
+  select(PrimaryKey, dupe_count, Species, source, SpeciesCount, DBKey, EcologicalSiteId, Latitude_NAD83, Longitude_NAD83, State, Elevation, County) %>% 
+  unite("assocKey", Species, dupe_count, sep = "_", remove=FALSE) %>% 
+  mutate(assocKey = as.factor(assocKey),
+         Species = as.factor(Species))
+
+assoc_nri_final <- rbind(assoc_nri_sing, assoc_nri_extract) %>% 
+  mutate(dupe_count = as.factor(dupe_count)) %>% 
+  select(PrimaryKey, dupe_count, Species, source, SpeciesCount, DBKey, EcologicalSiteId, Latitude_NAD83, Longitude_NAD83, State, ELEVATION, County) %>% 
+  rename(Elevation = ELEVATION) %>% 
+  unite("assocKey", Species, dupe_count, sep = "_", remove=FALSE) %>% 
+  mutate(assocKey = as.factor(assocKey),
+         Species = as.factor(Species))
+
+assoc_pj_final <- rbind(assoc_aim_final, assoc_nri_final) %>% 
+  mutate(SpeciesCount = replace_na(SpeciesCount, 0)) %>%  # SpeciesCount = 0 means missing/not in protocol/ AIM 
+        rename(Source = source, DupeCount = dupe_count, AssocKey = assocKey) %>% 
+  mutate(PrimaryKey = str_trim(PrimaryKey, side = "both"))
+
+#write.csv(assoc_pj_final, file = "../../PJ-Woodlands/data/pj_woodland_assoc_gee.csv", row.names = FALSE)
+
+# Tree Dom Index
+# AIM
+species_aim_simp<-species_aim %>% select(PrimaryKey, Species, AH_SpeciesCover, GrowthHabitSub)
+
+species_aim_simp_tree <- species_aim_simp %>% filter(GrowthHabitSub == "Tree")
+
+pj_aim_species <- pj_woodland_aim_cleaner %>% left_join(species_aim_simp_tree, by = "PrimaryKey") %>% select(PrimaryKey, Species.y, SpeciesCount, source, DENSITY, DBKey, EcologicalSiteId, Latitude_NAD83, Longitude_NAD83, State, Elevation, 
+County, LocationType, PercentCoveredByEcoSite, DateVisited.y, AH_SpeciesCover, GrowthHabitSub) %>%
+ filter(Species.y %in% juniperus |
+           Species.y %in% pinus)%>%
+filter(!(
+    #Species.y == "JUCO" |
+     Species.y == "JUCA7" | # California Juniper
+       Species.y == "JUGR7" |
+         Species.y == "PIAR" |
+         Species.y == "PIAT" |
+         Species.y == "PIGL2"|
+         Species.y == "PIJE" |
+         Species.y == "PILA" |
+         Species.y == "PILO" |
+        Species.y == "PIDI3" |
+         Species.y == "PISA2")) %>% 
+  mutate(Species.y = case_match(Species.y, "PIMOF" ~ "PIMO",
+                              "JUOCG" ~ "JUOC",
+                              .default = Species.y))
+
+pj_woodland_tree_cover_aim<-pj_aim_species %>% distinct(PrimaryKey, Species.y, .keep_all = TRUE) %>% group_by(PrimaryKey) %>% summarise(tot_tree = sum(AH_SpeciesCover, na.rm = TRUE))
+
+pj_aim_ind_all <- pj_woodland_aim_cleaner %>% left_join(ind_aim, by = "PrimaryKey") %>% select(PrimaryKey, source, DBKey.x, EcologicalSiteId.x, Latitude_NAD83.x, Longitude_NAD83.x, State.x, Elevation, County, LocationType.x, PercentCoveredByEcoSite.x, DateVisited.y, AH_ShrubCover, TotalFoliarCover, AH_PerenForbCover, AH_PerenGrassCover, BareSoilCover) %>% unique() %>% 
+  left_join(pj_woodland_tree_cover_aim, by = "PrimaryKey")
+
+TDI_AIM <- pj_aim_ind_all %>% 
+  mutate(TDI = 100*((tot_tree)/(AH_ShrubCover + AH_PerenGrassCover +tot_tree))) %>%
+  drop_na(TDI)
+
+TDI_AIM %>% 
+  filter(BareSoilCover != 0 & TDI != 0) %>% # remove missing data
+  ggplot(aes(x=TDI, y=AH_PerenGrassCover, color = as.factor(State.x)))+
+  geom_point()
+
+TDI_AIM %>% 
+  ggplot(aes(x=AH_ShrubCover, y=BareSoilCover, color = as.factor(State.x)))+
+  geom_point()
+
+#NRI
+species_nri_simp<-ind_nri %>% select(PrimaryKey, AH_ShrubCover, AH_TreeCover, BareSoilCover, AH_PerenForbCover, AH_PerenGrassCover, TotalFoliarCover)
+
+pj_nri_species <- pj_woodland_nri_cleaner %>% left_join(species_nri_simp, by = "PrimaryKey") %>% select(PrimaryKey, Species, SpeciesCount, source, DENSITY, DBKey, EcologicalSiteId, Latitude_NAD83, Longitude_NAD83, State, ELEVATION, 
+County, LocationType, PercentCoveredByEcoSite, DateVisited, AH_ShrubCover, AH_TreeCover, BareSoilCover, AH_PerenForbCover, AH_PerenGrassCover, TotalFoliarCover) %>% unique()
+
+TDI_NRI <- pj_nri_species %>% 
+  mutate(TDI = 100*((AH_TreeCover)/(AH_ShrubCover + AH_PerenGrassCover + AH_TreeCover))) %>% drop_na(TDI)
+
+TDI_AIM_clean <- TDI_AIM %>%
+  rename(DBKey = DBKey.x,
+         EcologicalSiteId = EcologicalSiteId.x,
+         Latitude_NAD83 = Latitude_NAD83.x,
+         Longitude_NAD83 = Longitude_NAD83.x,
+         State = State.x,
+         LocationType = LocationType.x,
+         PercentCoveredByEcoSite = PercentCoveredByEcoSite.x,
+         DateVisited = DateVisited.y,
+         AH_TreeCover = tot_tree)
+    
+
+TDI_NRI_clean <- TDI_NRI %>%
+  select(-Species, -SpeciesCount, -DENSITY) %>% 
+  rename(Elevation = ELEVATION)
+
+TDI_all <- rbind(TDI_AIM_clean, TDI_NRI_clean)%>% 
+  mutate(AH_Per_under = (AH_ShrubCover+AH_PerenForbCover+AH_PerenGrassCover),
+         AH_per_under_noforb = AH_ShrubCover+AH_PerenGrassCover)
+
+#Tausch, Robin J., et al. "Piñon and juniper field guide: asking the right #questions to select appropriate management actions." (2009): 1.
+# Phase 1 <20%, 20-50% = 2, >50% = Phase 3
+
+TDI_all_phases <- TDI_all %>%
+mutate(phase = case_when(TDI <= 20 ~ "Woodland Phase I",
+                         TDI > 20 & TDI <= 50 ~ "Woodland Phase II",
+                         TDI > 50 ~ "Woodland Phase III"),
+       phase = as.factor(phase),
+       DBKey = as.numeric(as.character(DBKey)),
+       period = case_when(DBKey <= 2017 ~ "2009-2017",
+                         DBKey > 2017 ~ "2018-2021"),
+       period = as.factor(period),
+       DBKey = as.factor(DBKey)) %>%
+       droplevels()
+
+tdi_calcs <- TDI_all_phases %>% group_by(phase, State) %>% summarise(TDI_mean = mean(TDI), sd_tdi = sd(TDI))
+
+# map of TDI
+bbox <- c(left = -125, bottom = 25, right = -90, top = 50)
+
+#register_stadiamaps("fb58c402-3ed9-4074-8f83-28542cf62252", write = TRUE)
+
+us_base <- get_stadiamap(bbox, maptype = "stamen_terrain_background", zoom=5)   # hi res
+
+# extract only 17 western states as in NRI
+west <- us_map(include = c(.west_region,
+                           "TX", "OK", "SD", "ND", "NE", "KS"),
+               exclude = c("AK", "HI"))
+
+# filter to transform projection, match names for transformation
+west_states <- map_data("state") %>% 
+  rename(lon = long) %>% 
+  filter(
+    region == "nevada" |
+      region == "arizona" |
+      region == "washington" |
+      region == "oregon" |
+      region == "california" |
+      region == "utah" |
+      region == "new mexico" |
+      region == "texas" |
+      region == "colorado" |
+      region == "oklahoma" |
+      region == "kansas" |
+      region == "nebraska" |
+      region == "south dakota" |
+      region == "north dakota" |
+      region == "montana" |
+      region == "wyoming" |
+      region == "idaho"
+  )
+
+# transform west states to have x, y
+west_transformed <- usmap_transform(west_states)
+
+# Heat map of TDI 
+tdi_map_fig <- ggmap(us_base) + 
+  scale_x_continuous(limits = c(-125,-90), expand = c(0.01,0)) +
+  scale_y_continuous(limits = c(25,50), expand = c(0,0)) +
+  xlab("Longitude (°)")+
+  ylab("Latitude (°)") +
+  #ylim(25, 50)+
+  #geom_density_2d(data = TDI_all_phases,
+  #               aes(x=Longitude_NAD83, y= Latitude_NAD83, color = phase),
+  #                   linewidth = 1.25,
+  #               contour_var = "count",
+                 #adjust = 1/2,
+  #               inherit.aes = F) + 
+  geom_point(data = TDI_all_phases, aes(x=Longitude_NAD83, y= Latitude_NAD83,
+  group = phase, color = phase), alpha = 0.6, size = 1)+
+  #scale_color_manual(values = c("goldenrod",
+  #                              "darkorange",
+  #                              "darkorange4"))+
+    scale_color_manual(values = c("cornflowerblue",
+                                "darkorange2",
+                                "darkred"))+
+  stat_density_2d(data = TDI_all_phases, 
+                  aes(x=Longitude_NAD83, y= Latitude_NAD83, group=phase,
+                      color=phase,
+                      fill = ..level..),
+                      linewidth = 1,
+                  alpha = 0.1,
+                  geom = "polygon",
+                   contour_var = "count", bins = 15,
+                  n=100,
+                  contour = TRUE, inherit.aes = F, show.legend = T)+
+  scale_fill_distiller(palette="YlOrBr", direction=1) +
+  geom_polygon(data=west_transformed,
+               aes(x=lon, y=lat, group=group),
+               colour="black", linewidth = 0.8, alpha = 0) +
+  guides(fill = "none", alpha = "none", linewidth ="none")+
+  labs(color = NULL)+
+  coord_sf()+
+  #facet_grid(cols = vars(phase))+
+  ggpubr::theme_pubr(legend = "top", base_size = 24)+
+  ggpubr::labs_pubr(base_size = 24)+
+  guides(color=guide_legend(override.aes=list(fill=NA),
+                            label.theme = element_text(size=24)))
+
+tdi_map_fig
+
+ggsave(filename = "tdi_heat_02132024.tiff",
+       plot = tdi_map_fig,
+       dpi = 800,
+       width = 18,
+       height = 10,
+       units = "in")
+
+```
+
+## Rangeland Health Data Availability
+
+```{r warning=FALSE, message=FALSE}
+
+# Double check how much RH NRI point data are complete with no duplicates
+range_health_nri %>% drop_na()
+
+# RH NRI 
+range_health_psup <- range_health_nri %>% 
+  mutate(survey = as.factor(str_sub(PrimaryKey, 1, -14)),
+        psu = str_sub(PrimaryKey, 10, 17))
+
+pj_woodland_nri_psup <- pj_woodland_nri_cleaner %>% 
+  mutate(survey = as.factor(str_sub(PrimaryKey, 1, -14)),
+        psu = str_sub(PrimaryKey, 10, 17))
+
+sp_rh_filt <- range_health_psup %>% 
+  left_join(pj_woodland_nri_psup, by= "psu") %>% 
+  unique() %>% 
+  select(-DBKey.x)
+
+# Some RH complete for each of the 17 indicators but the last three totals not present...must do calcs myself
+
+# No duplicates
+range_health_nri %>%
+  group_by_all() %>%
+  filter(n()>1) %>%
+  ungroup()
+
+# Some RH final ranks complete
+range_health_nri %>% select(PrimaryKey, RH_HydrologicFunction,
+                            RH_BioticIntegrity, RH_SoilSiteStability) %>%
+  drop_na()
+
+# recode RH categories as numbers, so the higher the number the healthier rangeland (ET = 5, ME = 4, M = 3, SM = 2, NS =1, NA = 0 so doesn't influence total)
+range_health_nri_numb <- range_health_nri %>%
+  mutate_at(c("RH_HydrologicFunction", "RH_SoilSiteStability",
+              "RH_BioticIntegrity"), funs(recode(.,
+  "EX" = "ET", # coded extreme departure as EX, not ET
+  "MO" = "M" # NRI coded moderate as MO
+  ))) %>%
+  mutate_at(vars(RH_Rills:RH_ReprodCapabilityPeren), funs(recode(.,
+  "ET" = 5, "EX" = 5,
+  "ME" = 4, 
+  "M" = 3, "MO" = 3,
+  "SM" = 2,
+  "NS" = 1
+  ))) %>%
+  mutate_at(vars(RH_Rills:RH_ReprodCapabilityPeren), funs(replace_na(., 0)))
+
+# To calculate the total soil and site stability (SSS), hydrologic function (HF), and biotic integrity (BI) measures, need sum the specific indicators that correspond to each.
+# SSS = Rills, water flow, pedestals, bare ground, gullies, wind scoured, litter movement, soil surface resist erosion, soil surface loss, compaction
+# HF = rills, water flow, pedestals, bare ground, gullies, soil surface resist erosion, soil surface loss, plant comp infiltration, compaction, litter cover
+# BI = soil surface resist erosion, soil surface loss, compaction, functional groups, dead plants, litter cover, annual production, invasive plants, vigor
+# sum the respective columns to get a total departure value
+# divide by total number of indicators 
+
+range_health_nri_cat <- range_health_nri_numb %>%
+  rowwise() %>%
+  mutate(RH_SSS_sum = ((RH_Rills +
+                         RH_WaterFlowPatterns +
+                         RH_PedestalsTerracettes +
+                         RH_BareGround +
+                         RH_Gullies +
+                         RH_WindScouredAreas + 
+                         RH_LitterMovement +
+                         RH_SoilSurfResisErosion +
+                         RH_SoilSurfLossDeg +
+                         RH_Compaction)/10),
+         RH_HF_sum = ((RH_Rills +
+                         RH_WaterFlowPatterns +
+                         RH_PedestalsTerracettes +
+                         RH_BareGround +
+                         RH_Gullies +
+                         RH_SoilSurfResisErosion +
+                         RH_SoilSurfLossDeg +
+                         RH_PlantCommunityComp + 
+                         RH_Compaction +
+                         RH_LitterAmount)/10),
+         RH_BI_sum = ((RH_SoilSurfResisErosion +
+                        RH_SoilSurfLossDeg +
+                        RH_Compaction +
+                        RH_FuncSructGroup +
+                        RH_DeadDyingPlantParts +
+                        RH_LitterAmount +
+                        RH_AnnualProd +
+                        RH_InvasivePlants +
+                        RH_ReprodCapabilityPeren)/9))
+
+# limit to the RH columns for easy checking/reading comments
+range_health_nri_small <- range_health_nri_cat %>%
+  select(PrimaryKey, DBKey, RH_HydrologicFunction, RH_HF_sum, 
+         RH_BioticIntegrity, RH_BI_sum,
+         RH_SoilSiteStability, RH_SSS_sum, RH_PlantCommunityComp) %>% 
+  mutate(DBKey = as.factor(DBKey))
+
+
+# Start with the  NRI points 
+range_health_nri_complete <- range_health_nri %>%
+  mutate_if(is.character,list(~na_if(., ""))) %>%
+  select(PrimaryKey, DBKey, source,
+  RH_HydrologicFunction,
+  RH_BioticIntegrity,
+  RH_SoilSiteStability, RH_PlantCommunityComp) %>%
+  drop_na()
+
+# Find NRI and RH data on PJ points
+rh_pj_nri <- pj_woodland_nri_cleaner %>% 
+  select(PrimaryKey, DBKey, SpeciesCount,
+         Species, DENSITY, source,
+         EcologicalSiteId) %>% 
+  full_join(range_health_nri_small, by = c("PrimaryKey")) %>%
+  distinct() %>% 
+  drop_na(Species)
+
+# Add LDC point info (GPS) to RH on PJ points, filter to all good rh totals
+rh_pj_nri_comp <- rh_pj_nri  %>% 
+  filter(RH_HF_sum > 0 & RH_BI_sum > 0 & RH_SSS_sum > 0) %>% 
+  left_join(nri_points, by = "PrimaryKey") %>%
+  select(-source.y, -DBKey.x, -DBKey.y, -EcologicalSiteId.x,
+          -DateVisited) %>% 
+  rename(EcologicalSiteId = EcologicalSiteId.y,
+         source = source.x) %>%
+  rename_with(tolower) %>%
+  mutate(species = as.factor(species),
+       density = as.factor(density),
+       rh_hydrologicfunction = as.factor(rh_hydrologicfunction),
+       rh_bioticintegrity = as.factor(rh_bioticintegrity),
+       rh_soilsitestability = as.factor(rh_soilsitestability),
+       rh_plantcommunitycomp = as.factor(rh_plantcommunitycomp),
+       ecologicalsiteid = as.factor(ecologicalsiteid),
+       state = as.factor(state),
+       county = as.factor(county)) %>%
+  rename(PrimaryKey = primarykey,
+         DBKey = dbkey,
+         ecositeID = ecologicalsiteid)
+
+# Double check how much RH AIM/LMF point data are complete with no duplicates
+range_health_aim %>% drop_na()
+
+# Some RH complete but entered in as comments, not ratings
+range_health_aim %>% select(PrimaryKey, RH_HydrologicFunction,
+                            RH_BioticIntegrity, RH_PlantCommunityComp) %>%
+  drop_na()
+
+# recode RH categories as numbers, so the higher the number the healthier rangeland (ET = 5, ME = 4, M = 3, SM = 2, NS = 1, NA = 0 so doesn't influence total)
+range_health_aim_numb <- range_health_aim %>%
+  mutate_at(c("RH_HydrologicFunction", "RH_SoilSiteStability",
+              "RH_BioticIntegrity"), funs(recode(.,
+  "EX" = "ET", # coded extreme departure as EX, not ET
+  "MO" = "M" # coded moderate as MO
+  ))) %>%
+  mutate_at(vars(RH_AnnualProd:RH_WindScouredAreas), funs(recode(.,
+  "ET" = 5, "EX" = 5,
+  "ME" = 4, 
+  "M" = 3, "MO" = 3,
+  "SM" = 2,
+  "NS" = 1
+  ))) %>%
+  mutate_at(vars(RH_AnnualProd:RH_WindScouredAreas), funs(replace_na(., 0)))
+
+# To calculate the total soil and site stability (SSS), hydrologic function (HF), and biotic integrity (BI) measures, need sum the specific indicators that correspond to each.
+# SSS = Rills, water flow, pedestals, bare ground, gullies, wind scoured, litter movement, soil surface resist erosion, soil surface loss, compaction
+# HF = rills, water flow, pedestals, bare ground, gullies, soil surface resist erosion, soil surface loss, plant comp infiltration, compaction, litter cover
+# BI = soil surface resist erosion, soil surface loss, compaction, functional groups, dead plants, litter cover, annual production, invasive plants, vigor
+# sum the respective columns to get a total departure value
+
+range_health_aim_cat <- range_health_aim_numb %>%
+  rowwise() %>%
+  mutate(RH_SSS_sum = ((RH_Rills +
+                         RH_WaterFlowPatterns +
+                         RH_PedestalsTerracettes +
+                         RH_BareGround +
+                         RH_Gullies +
+                         RH_WindScouredAreas + 
+                         RH_LitterMovement +
+                         RH_SoilSurfResisErosion +
+                         RH_SoilSurfLossDeg +
+                         RH_Compaction)/10),
+         RH_HF_sum = ((RH_Rills +
+                         RH_WaterFlowPatterns +
+                         RH_PedestalsTerracettes +
+                         RH_BareGround +
+                         RH_Gullies +
+                         RH_SoilSurfResisErosion +
+                         RH_SoilSurfLossDeg +
+                         RH_PlantCommunityComp + 
+                         RH_Compaction +
+                         RH_LitterAmount)/10),
+         RH_BI_sum = ((RH_SoilSurfResisErosion +
+                        RH_SoilSurfLossDeg +
+                        RH_Compaction +
+                        RH_FuncSructGroup +
+                        RH_DeadDyingPlantParts +
+                        RH_LitterAmount +
+                        RH_AnnualProd +
+                        RH_InvasivePlants +
+                        RH_ReprodCapabilityPeren)/9))
+
+# limit to the RH columns for easy checking/reading comments
+range_health_aim_small <- range_health_aim_cat %>%
+  select(PrimaryKey, DBKey, RecKey, RH_HydrologicFunction, RH_HF_sum, 
+         RH_CommentsHF, RH_BioticIntegrity, RH_BI_sum, RH_CommentsBI,
+         RH_SoilSiteStability, RH_SSS_sum, RH_CommentsSS, RH_PlantCommunityComp)
+
+# No duplicates
+range_health_aim %>%
+  group_by_all() %>%
+  filter(n()>1) %>%
+  ungroup()
+
+# Start with the AIM/LMF points
+range_health_aim_complete <- range_health_aim %>%
+  mutate_if(is.character,list(~na_if(., ""))) %>%
+  select(PrimaryKey, DBKey, source,
+  RH_HydrologicFunction,
+  RH_BioticIntegrity,
+  RH_SoilSiteStability, RH_PlantCommunityComp) %>%
+  drop_na()
+
+# Find AIM and RH data on PJ points
+rh_pj_aim <- pj_woodland_aim_cleaner %>% 
+  select(PrimaryKey, DBKey,
+         Species, DENSITY, SpeciesCount, source,
+         EcologicalSiteId) %>% 
+  full_join(range_health_aim_small, by = "PrimaryKey") %>%
+  distinct() %>% 
+  drop_na(Species)
+
+# Add AIM point info (GPS) to RH on PJ points, filter to all good rh totals
+rh_pj_aim_comp <- rh_pj_aim  %>% 
+  filter(RH_HF_sum > 0 & RH_BI_sum > 0 & RH_SSS_sum > 0) %>% 
+  left_join(aim_all_points, by = "PrimaryKey") %>%
+  select(-source.y, -DBKey.x, -DBKey.y, -PlotID, -PlotKey, -EcologicalSiteId.x,
+         -Design, -DesignFlag, -Purpose, -PurposeFlag, -ProjectName, -DateVisited,
+         -LocationType, -SpeciesState, -DateEstablished, -DateLoadedInDb) %>% 
+  rename(EcologicalSiteId = EcologicalSiteId.y,
+         source = source.x) %>%
+  rename_with(tolower) %>%
+  mutate(species = as.factor(species),
+       density = as.factor(density),
+       rh_hydrologicfunction = as.factor(rh_hydrologicfunction),
+       rh_bioticintegrity = as.factor(rh_bioticintegrity),
+       rh_soilsitestability = as.factor(rh_soilsitestability),
+      rh_plantcommunitycomp = as.factor(rh_plantcommunitycomp),
+       ecologicalsiteid = as.factor(ecologicalsiteid),
+       state = as.factor(state),
+       county = as.factor(county)) %>%
+  rename(PrimaryKey = primarykey,
+         DBKey = dbkey,
+         ecositeID = ecologicalsiteid)
+
+
+# write.csv(rh_pj_aim_comp, file = "../../PJ-Woodlands/data/rh_pj_aim_complete.csv", row.names = FALSE)
+
+# extract points with associations (more than 1 PJ species recorded together)
+rh_pj_aim_comp_assoc <- rh_pj_aim_comp %>% 
+  get_dupes(PrimaryKey)
+
+# write.csv(rh_pj_aim_comp_assoc, file = "../../PJ-Woodlands/data/rh_pj_aim_complete_assoc.csv", row.names = FALSE)
+
+
+# write.csv(rh_pj_nri_comp, file = "../../PJ-Woodlands/data/rh_pj_nri_complete.csv", row.names = FALSE)
+
+# extract points with associations (more than 1 PJ species recorded together)
+rh_pj_nri_comp_assoc <- rh_pj_nri_comp %>% 
+  get_dupes(PrimaryKey)
+
+# write.csv(rh_pj_nri_comp_assoc, file = "../../PJ-Woodlands/data/rh_pj_nri_complete_assoc.csv", row.names = FALSE)
+```
