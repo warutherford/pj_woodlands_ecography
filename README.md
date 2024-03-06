@@ -2,11 +2,11 @@
 
 ## This work is submitted:
 
-Journal: ***Ecography***
+Journal: ***Ecological Applications***
 
 Manuscript type: Research Article
 
-Title: **Determining the distribution and ecohydrologic function of pinyon pine and juniper woodland species across the western USA using national longitudinal surveys**
+Title: **Distribution and ecohydrologic function of pinyon pine and juniper woodland species using national longitudinal surveys**
 
 ## Abstract
 
